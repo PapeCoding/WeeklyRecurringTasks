@@ -1,18 +1,18 @@
 Weekly Recurring Tasks
 ==============================
 
-Automatically Clone Kanboard Tasks with the DAILY/WEEKLY/BIWEEKLY/DAY-OF-WEEK-IN-CAPITAL tag.
+Automatically clones Tasks with the DAILY/WEEKLY/BIWEEKLY or MONDAY/TUESDAY/WEDNESDAY/THURSDAY/FRIDAY/SATURDAY/SUNDAY tag.
 
 Author
 ------
 
-- Sebastien Diot
+- Sebastian Pape, Sebastien Diot
 - License MIT
 
 Requirements
 ------------
 
-- Kanboard >= 1.0.35
+- Kanboard >= 1.2.13
 
 Installation
 ------------

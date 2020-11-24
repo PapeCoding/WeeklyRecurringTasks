@@ -25,22 +25,22 @@ class Plugin extends Base
 
     public function getPluginDescription()
     {
-        return t('Automatically Clone Kanboard Tasks with the DAILY/WEEKLY/BIWEEKLY/DAY-OF-WEEK-IN-CAPITAL tag.');
+        return t('Automatically clones Tasks with the DAILY/WEEKLY/BIWEEKLY or MONDAY/TUESDAY/WEDNESDAY/THURSDAY/FRIDAY/SATURDAY/SUNDAY tag');
     }
 
     public function getPluginAuthor()
     {
-        return 'Sebastien Diot';
+        return 'Sebastian Pape, Sebastien Diot';
     }
 
     public function getPluginVersion()
     {
-        return '1.0.1';
+        return '1.0.2';
     }
 
     public function getPluginHomepage()
     {
-        return 'https://github.com/skunkiferous/WeeklyRecurringTasks';
+        return 'https://github.com/PapeCoding/WeeklyRecurringTasks';
     }
 }
 

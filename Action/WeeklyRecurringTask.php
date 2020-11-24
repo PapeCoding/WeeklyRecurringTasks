@@ -13,7 +13,7 @@ use Kanboard\Model\TaskProjectDuplicationModel;
  * DAY-OF-WEEK-IN-CAPITAL: MONDAY/TUESDAY/WEDNESDAY/THURSDAY/FRIDAY/SATURDAY/SUNDAY
  *
  * @package action
- * @author  Sebastien Diot
+ * @author  Sebastian Pape, Sebastien Diot
  */
 class WeeklyRecurringTask extends Base
 {
@@ -25,8 +25,9 @@ class WeeklyRecurringTask extends Base
      */
     public function getDescription()
     {
-        return t('Automatically clone Tasks with the DAILY/WEEKLY/BIWEEKLY/DAY-OF-WEEK-IN-CAPITAL tag');
+        return t('Automatically clones Tasks with the DAILY/WEEKLY/BIWEEKLY or MONDAY/TUESDAY/WEDNESDAY/THURSDAY/FRIDAY/SATURDAY/SUNDAY tag');
     }
+	
     /**
      * Get the list of compatible events
      *
@@ -39,6 +40,7 @@ class WeeklyRecurringTask extends Base
             TaskModel::EVENT_DAILY_CRONJOB,
         );
     }
+	
     /**
      * Get the required parameter for the action (defined by the user)
      *
@@ -49,6 +51,7 @@ class WeeklyRecurringTask extends Base
     {
         return array();
     }
+	
     /**
      * Get the required parameter for the event
      *
@@ -59,6 +62,7 @@ class WeeklyRecurringTask extends Base
     {
         return array();
     }
+	
     /**
      * Check if the event data meet the action condition
      *
@@ -70,22 +74,20 @@ class WeeklyRecurringTask extends Base
     {
         return true;
     }
+	
     /**
      * Get currently due (yesterday to tomorrow) tasks query
      *
      * @access private
      * @param  integer  $project_id
-     * @param  string  $tag
+     * @param  string   $tag
      * @return array
      */
     private function getDueTasks($project_id, $tag)
     {
 		$tag_id = $this->tagModel->getIdByName($project_id, $tag);
-        if ($tag_id == 0) {
-			// $tag not found in project $project_id
-            return array();
-        }
-		// The (yesterday to tomorrow) range enables us to duplicate correctly, even if the server was down for one day.
+        if ($tag_id == 0){return array();} /*  $tag not found in project */
+		
         return $this->db->table(TaskModel::TABLE)
                     ->columns(
                         TaskModel::TABLE.'.id',
@@ -96,31 +98,18 @@ class WeeklyRecurringTask extends Base
                     ->join(TaskTagModel::TABLE, 'task_id', 'id')
                     ->eq(TaskTagModel::TABLE.'.tag_id', $tag_id)
                     ->eq(TaskModel::TABLE.'.project_id', $project_id)
-                    /*->eq(TaskModel::TABLE.'.is_active', 0)*/
-                    ->gte(TaskModel::TABLE.'.date_due', strtotime("-1 day"))
-                    ->lte(TaskModel::TABLE.'.date_due', strtotime("+1 day"))
+                    ->gte(TaskModel::TABLE.'.date_due', strtotime("today"))
+                    ->lt(TaskModel::TABLE.'.date_due', strtotime("tomorrow"))
 					->findAll();
     }
-    /**
-     * Check if the task was duplicated already
-     *
-     * @access private
-     * @param  integer  $project_id
-     * @param  string  $title
-     * @param  integer  $date_due
-     * @return bool
-     */
-    private function wasDuplicated($project_id, $title, $date_due)
-    {
-        return $this->db->table(TaskModel::TABLE)->eq('project_id', $project_id)->eq('title', $title)->eq('date_due', $date_due)->exists();
-    }
+	
     /**
      * Process all relevant tasks of one project.
      *
      * @access private
      * @param  integer  $project_id
-     * @param  string  $tag
-     * @param  string  $delay
+     * @param  string   $tag
+     * @param  string   $delay
      * @return bool
      */
 	private function processProject($project_id, $tag, $delay)
@@ -128,68 +117,49 @@ class WeeklyRecurringTask extends Base
 		$result = true;
 		$due_tasks = $this->getDueTasks($project_id, $tag);
 		foreach ($due_tasks as $task) {
-			$task_id = $task['id'];
-			$task_title = $task['title'];
-			$task_date_due = $task['date_due'];
-			$new_due_date = strtotime($delay, $task_date_due);
-			$duplicated = $this->wasDuplicated($project_id, $task_title, $new_due_date);
-			if (!$duplicated) {
-				$new_task_id = $this->taskProjectDuplicationModel->duplicateToProject($task_id, $project_id);
-				if ($new_task_id !== false) {
-					if (!$this->taskModificationModel->update(array('id' => $new_task_id, 'is_active' => 1, 'date_due' => $new_due_date))) {
-						error_log('Failed to update duplicated task: ID=' . $new_task_id . ', TITLE=' . $task_title . ', PROJECT=' . $project_id);
-					}
-				} else {
-					error_log('Failed to duplicate task: ID=' . $task_id . ', TITLE=' . $task_title . ', PROJECT=' . $project_id);
-					$result = false;
-					Break;
-				}
+			$new_due_date = strtotime($delay, $task['date_due']);
+			
+			/* Check if task was already duplicated */
+			if ($this->db->table(TaskModel::TABLE)->eq('project_id', $project_id)->eq('title', $task['title'])->eq('date_due', $new_due_date)->exists()) {
+				continue; /* Nothing todo */
+			}
+			
+			/* Duplicate task */
+			$new_task_id = $this->taskProjectDuplicationModel->duplicateToProject($task['id'], $project_id);
+			if ($new_task_id <= 0) {
+				error_log('Failed to duplicate task: ID=' . $task['id'] . ', TITLE=' . $task['title'] . ', PROJECT=' . $project_id);
+				$result = false;
+				continue;
+			}
+			
+			/* Update task with new due date */
+			if (!$this->taskModificationModel->update(array('id' => $new_task_id, 'is_active' => 1, 'date_due' => $new_due_date))) {
+				error_log('Failed to update duplicated task: ID=' . $new_task_id . ', TITLE=' . $task['title'] . ', PROJECT=' . $project_id);
+				$result = false;
+				continue;
 			}
 		}
 		return $result;
 	}
-    /**
-     * Returns true for week-end dates.
-     *
-     * @access private
-     * @param  integer  $date
-     * @return bool
-     */
-	private function isWeekend($date) {
-		return (date('N', strtotime($date)) >= 6);
-	}	
+
     /**
      * Execute the action
      *
      * @access public
-     * @param  array   $data   Event data dictionary
-     * @return bool            True if the action was executed or false when not executed
+     * @param  array   $data   Empty for this event
+     * @return bool            True if all tasks could be processed correctly. False if one task could not be duplicated.
      */
     public function doAction(array $data)
     {
 		$result = true;
+		$today = strtoupper(date("l")); /* MONDAY/TUESDAY/WEDNESDAY/THURSDAY/FRIDAY/SATURDAY/SUNDAY */
+		
+		/* Loop over all active projects */
 		foreach ($this->projectModel->getAllByStatus(ProjectModel::ACTIVE) as $project) {
-			$project_name = $project['name'];
-			$project_id = $project['id'];
-			$result = $this->processProject($project_id, "DAILY", "+1 day");
-			if (!$result) {
-				Break;
-			}
-			$result = $this->processProject($project_id, "WEEKLY", "+7 day");
-			if (!$result) {
-				Break;
-			}
-			$result = $this->processProject($project_id, "BIWEEKLY", "+14 day");
-			if (!$result) {
-				Break;
-			}
-			// Now, for the day-specific tags...
-			$today = strtoupper(date("l", time()));
-			var_dump($today);
-			$result = $this->processProject($project_id, $today, "+7 day");
-			if (!$result) {
-				Break;
-			}
+			$result = $this->processProject($project['id'], "DAILY", "+1 day") && $result;
+			$result = $this->processProject($project['id'], "WEEKLY", "+7 day") && $result;
+			$result = $this->processProject($project['id'], "BIWEEKLY", "+14 day") && $result;
+			$result = $this->processProject($project['id'], $today, "+7 day") && $result;
 		}
 		return $result;
     }
